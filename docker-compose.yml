@@ -1,0 +1,46 @@
+services:
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      FAKE_STORE_API_URL: ${FAKE_STORE_API_URL:-https://fakestoreapi.com}
+      PRODUCT_CACHE_TTL_MS: ${PRODUCT_CACHE_TTL_MS:-300000}
+      UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-8000}
+      SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
+      SALES_INBOX: ${SALES_INBOX:-sales@fieldwork.test}
+      MAIL_FROM: ${MAIL_FROM:-enquiries@fieldwork.test}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      ENQUIRY_RATE_LIMIT_MAX: ${ENQUIRY_RATE_LIMIT_MAX:-5}
+      ENQUIRY_RATE_LIMIT_WINDOW_MS: ${ENQUIRY_RATE_LIMIT_WINDOW_MS:-900000}
+    depends_on:
+      - mailpit
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
